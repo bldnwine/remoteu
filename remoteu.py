@@ -15,6 +15,7 @@ import shutil
 import socket
 import string
 import struct
+import time
 from typing import Any
 
 from evdev import UInput, ecodes
@@ -26,6 +27,11 @@ logger = logging.getLogger("remoteu")
 _UNPACK_MOUSE = struct.Struct("!BhhB").unpack
 _UNPACK_SCROLL = struct.Struct("!Bh").unpack
 _UNPACK_PING = struct.Struct("!BI").unpack
+# Sequenced frames add uint16 seq + uint32 client timestamp (ms mod 2**32).
+_UNPACK_MOUSE_SEQ = struct.Struct("!BHIhhB").unpack
+_UNPACK_SCROLL_SEQ = struct.Struct("!BHIh").unpack
+_SEQ_MOD = 65536
+_TS_MOD = 4294967296
 
 # Native Linux struct input_event layout:
 # timeval (tv_sec: long, tv_usec: long), type (u16), code (u16), value (s32)
@@ -600,6 +606,205 @@ async def _command_worker(
 
 # ── WebSocket Route Handler ──
 
+STALL_GAP_S = 0.05  # arrival gap counted as a stall while a gesture is active
+TELEPORT_PX = 200  # coalesced burst magnitude counted as a teleport
+
+
+class MotionStats:
+    """Per-connection motion telemetry: seq gaps, jitter, stalls, teleports."""
+
+    def __init__(self, time_fn=None):
+        self._now = time_fn or time.monotonic
+        self.frames = 0
+        self.sequenced_frames = 0
+        self.seq_gaps = 0
+        self.jitter_ms = 0.0
+        self.stalls = 0
+        self.teleports = 0
+        self.max_burst_px = 0
+        self._last_seq: int | None = None
+        self._last_client_ts: int | None = None
+        self._last_arrival: float | None = None
+
+    def _seq_forward_distance(self, seq: int) -> int | None:
+        if self._last_seq is None:
+            return None
+        return (seq - self._last_seq) % _SEQ_MOD
+
+    def record(self, seq: int | None, client_ts: int | None, dx: int, dy: int):
+        now = self._now()
+        self.frames += 1
+        burst = abs(dx) + abs(dy)
+        if burst > self.max_burst_px:
+            self.max_burst_px = burst
+        if burst >= TELEPORT_PX:
+            self.teleports += 1
+        if self._last_arrival is not None and (now - self._last_arrival) >= STALL_GAP_S:
+            self.stalls += 1
+        if seq is not None:
+            self.sequenced_frames += 1
+            dist = self._seq_forward_distance(seq)
+            if dist is not None and dist > 1:
+                self.seq_gaps += dist - 1
+            self._last_seq = seq
+        if client_ts is not None and self._last_client_ts is not None and self._last_arrival is not None:
+            client_delta = (client_ts - self._last_client_ts) % _TS_MOD
+            arrival_delta_ms = (now - self._last_arrival) * 1000.0
+            self.jitter_ms += (abs(arrival_delta_ms - client_delta) - self.jitter_ms) / 16.0
+        if client_ts is not None:
+            self._last_client_ts = client_ts
+        self._last_arrival = now
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "frames": self.frames,
+            "sequenced_frames": self.sequenced_frames,
+            "seq_gaps": self.seq_gaps,
+            "jitter_ms": round(self.jitter_ms, 2),
+            "stalls": self.stalls,
+            "teleports": self.teleports,
+            "max_burst_px": self.max_burst_px,
+        }
+
+
+class MotionSmoother:
+    """Adaptive jitter buffer with bounded dead-reckoning for pointer motion.
+
+    Smooth mode is the default: frames are held for an adaptive playout delay
+    (2x measured jitter, max 30ms, collapsing to ~0 on clean links) and brief
+    decayed extrapolation covers stalls. Direct mode is a pass-through with
+    zero added latency. Scroll/click/key paths are untouched.
+    """
+
+    def __init__(self, emit=None, time_fn=None, flush_interval: float = 0.008, enabled: bool = True, on_error=None):
+        self._emit = emit or (lambda dx, dy, scroll: ui.emit_rel_scroll(dx, dy, scroll))
+        self._now = time_fn or time.monotonic
+        self.flush_interval = flush_interval
+        self.enabled = enabled
+        self._on_error = on_error
+        self.predict_enabled = True
+        self._queue: list[tuple[float, int, int, int]] = []  # (arrival, dx, dy, scroll)
+        self._vel_x = 0.0
+        self._vel_y = 0.0
+        self._last_emit: float | None = None
+        self._last_arrival: float | None = None
+        self._predicted_px = 0.0
+        self._predicted_s = 0.0
+        self._jitter_s = 0.0
+
+    @property
+    def playout_delay(self) -> float:
+        return 0.0 if not self.enabled else min(0.030, max(0.0, 2.0 * self._jitter_s))
+
+    def set_enabled(self, enabled: bool):
+        self.enabled = enabled
+        if not enabled:
+            self.flush()
+        else:
+            self._predicted_px = 0.0
+            self._predicted_s = 0.0
+
+    def set_jitter(self, jitter_ms: float):
+        self._jitter_s = max(0.0, jitter_ms) / 1000.0
+
+    def push(self, dx: int, dy: int, scroll: int = 0):
+        now = self._now()
+        self._last_arrival = now
+        self._predicted_px = 0.0
+        self._predicted_s = 0.0
+        if not self.enabled:
+            self._emit_direct(dx, dy, scroll, now)
+            return
+        self._queue.append((now, dx, dy, scroll))
+
+    def _emit_direct(self, dx: int, dy: int, scroll: int, now: float, dt_hint: float | None = None):
+        if dx == 0 and dy == 0 and scroll == 0:
+            return
+        self._emit(dx, dy, scroll)
+        if dt_hint is not None:
+            alpha = 0.3
+            self._vel_x += alpha * (dx / max(1e-3, dt_hint) - self._vel_x)
+            self._vel_y += alpha * (dy / max(1e-3, dt_hint) - self._vel_y)
+        else:
+            self._track_velocity(dx, dy, now)
+
+    def _track_velocity(self, dx: int, dy: int, now: float):
+        if self._last_emit is not None:
+            dt = max(1e-3, now - self._last_emit)
+            alpha = 0.3
+            self._vel_x += alpha * (dx / dt - self._vel_x)
+            self._vel_y += alpha * (dy / dt - self._vel_y)
+        self._last_emit = now
+
+    def flush(self):
+        if not self._queue:
+            return
+        total_dx = sum(f[1] for f in self._queue)
+        total_dy = sum(f[2] for f in self._queue)
+        total_scroll = sum(f[3] for f in self._queue)
+        self._queue.clear()
+        self._emit_direct(total_dx, total_dy, total_scroll, self._now())
+
+    def tick(self):
+        now = self._now()
+        if not self.enabled:
+            return
+        delay = self.playout_delay
+        due_dx = due_dy = due_scroll = 0
+        oldest: float | None = None
+        remaining = []
+        for arrival, dx, dy, scroll in self._queue:
+            if arrival + delay <= now:
+                due_dx += dx
+                due_dy += dy
+                due_scroll += scroll
+                if oldest is None or arrival < oldest:
+                    oldest = arrival
+            else:
+                remaining.append((arrival, dx, dy, scroll))
+        self._queue = remaining
+        if due_dx or due_dy or due_scroll:
+            span = max(0.004, now - oldest) if oldest is not None else None
+            self._emit_direct(due_dx, due_dy, due_scroll, now, dt_hint=span)
+            return
+        # Dead reckoning: brief decayed extrapolation during stalls.
+        if (
+            self.predict_enabled
+            and not self._queue
+            and self._last_arrival is not None
+            and now - self._last_arrival >= 0.025
+            and self._predicted_s < 0.080
+            and self._predicted_px < 96.0
+        ):
+            speed = (self._vel_x**2 + self._vel_y**2) ** 0.5
+            if speed > 500.0:  # px/s
+                step = 0.008
+                step_dx = int(round(self._vel_x * step))
+                step_dy = int(round(self._vel_y * step))
+                if step_dx or step_dy:
+                    self._emit(step_dx, step_dy, 0)
+                    self._last_emit = now
+                    self._predicted_px += abs(step_dx) + abs(step_dy)
+                    self._predicted_s += step
+                    self._vel_x *= 0.9
+                    self._vel_y *= 0.9
+
+    async def run(self):
+        while True:
+            await asyncio.sleep(self.flush_interval)
+            try:
+                self.tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.debug("Motion smoother tick failed: %s", e)
+                if self._on_error is not None:
+                    try:
+                        await self._on_error(e)
+                    except Exception:
+                        pass
+
+
 def _drain_queued_binary_frames(ws: web.WebSocketResponse) -> list[WSMessage]:
     """Drain any pending binary messages already in the asyncio reader queue."""
     batch: list[WSMessage] = []
@@ -647,6 +852,12 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
                 pass
 
     is_dragging = False
+    motion_stats = MotionStats()
+
+    async def _motion_error(e: Exception):
+        await _send_ws_error(ws, f"Input error: {e}")
+
+    smoother = MotionSmoother(on_error=_motion_error)
     keyboard_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
     command_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
     background_workers = (
@@ -656,7 +867,47 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
         asyncio.create_task(
             _command_worker(ws, command_queue), name="remoteu-command-worker"
         ),
+        asyncio.create_task(smoother.run(), name="remoteu-motion-smoother"),
     )
+
+    def _motion_frames(first: bytes) -> tuple[
+        list[tuple[int, int, int, bool, int | None, int | None]], list[bytes]
+    ]:
+        """Parse the current plus drained binary frames into motion tuples.
+
+        Returns ([(dx, dy, scroll, drag, seq, client_ts)], [ping frames to echo]).
+        Unknown frames are ignored.
+        """
+        out: list[tuple[int, int, int, bool, int | None, int | None]] = []
+        pongs: list[bytes] = []
+
+        def _parse(data: bytes):
+            if len(data) == 12 and data[0] == 4:
+                _, seq, cts, dx, dy, flags = _UNPACK_MOUSE_SEQ(data)
+                return (dx, dy, 0, bool(flags & 1), seq, cts)
+            if len(data) == 9 and data[0] == 5:
+                _, seq, cts, amount = _UNPACK_SCROLL_SEQ(data)
+                return (0, 0, amount, False, seq, cts)
+            if len(data) == 6 and data[0] == 1:
+                _, dx, dy, flags = _UNPACK_MOUSE(data)
+                return (dx, dy, 0, bool(flags & 1), None, None)
+            if len(data) == 3 and data[0] == 2:
+                _, amount = _UNPACK_SCROLL(data)
+                return (0, 0, amount, False, None, None)
+            return None
+
+        parsed = _parse(first)
+        if parsed is not None:
+            out.append(parsed)
+        for extra_msg in _drain_queued_binary_frames(ws):
+            extra = extra_msg.data
+            if len(extra) == 5 and extra[0] == 3:
+                pongs.append(extra)
+                continue
+            parsed = _parse(extra)
+            if parsed is not None:
+                out.append(parsed)
+        return out, pongs
 
     try:
         await ws.send_json({"type": "connected", "status": "ready"})
@@ -665,44 +916,27 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
                 if msg.type == web.WSMsgType.BINARY:
                     _rearm_quickack()
                     data = msg.data
-                    # 0x01: Mouse delta frame (6 bytes: !BhhB)
-                    if len(data) == 6 and data[0] == 1:
-                        _, dx, dy, flags = _UNPACK_MOUSE(data)
-                        drag = bool(flags & 1)
-                        if drag and not is_dragging:
-                            is_dragging = True
-                            key_down(MOUSE_BTN[1])
-
-                        total_dx = dx
-                        total_dy = dy
-
-                        # Coalesce any queued binary delta/scroll frames from the same burst.
-                        extra_frames = _drain_queued_binary_frames(ws)
-                        total_scroll = 0
-                        for extra_msg in extra_frames:
-                            extra_data = extra_msg.data
-                            if len(extra_data) == 6 and extra_data[0] == 1:
-                                _, sub_dx, sub_dy, sub_flags = _UNPACK_MOUSE(extra_data)
-                                sub_drag = bool(sub_flags & 1)
-                                if sub_drag and not is_dragging:
-                                    is_dragging = True
-                                    key_down(MOUSE_BTN[1])
-                                total_dx += sub_dx
-                                total_dy += sub_dy
-                            elif len(extra_data) == 5 and extra_data[0] == 3:
-                                await ws.send_bytes(extra_data)
-                            elif len(extra_data) == 3 and extra_data[0] == 2:
-                                _, amount = _UNPACK_SCROLL(extra_data)
-                                if amount != 0:
-                                    total_scroll += amount
-
-                        ui.emit_rel_scroll(total_dx, total_dy, total_scroll)
-
-                    # 0x02: Scroll frame (3 bytes: !Bh)
-                    elif len(data) == 3 and data[0] == 2:
-                        _, amount = _UNPACK_SCROLL(data)
-                        if amount != 0:
-                            ui.emit_scroll(amount)
+                    # 0x01/0x04: Mouse delta frames (legacy 6B or sequenced 12B)
+                    # 0x02/0x05: Scroll frames (legacy 3B or sequenced 9B)
+                    if data[:1] in (b"\x01", b"\x02", b"\x04", b"\x05") and len(data) in (3, 6, 9, 12):
+                        frames, pongs = _motion_frames(data)
+                        for pong in pongs:
+                            await ws.send_bytes(pong)
+                        # Drag button transitions stay immediate; payloads may be smoothed.
+                        for dx, dy, scroll, drag, seq, cts in frames:
+                            if drag and not is_dragging:
+                                is_dragging = True
+                                key_down(MOUSE_BTN[1])
+                            motion_stats.record(seq, cts, dx, dy)
+                        smoother.set_jitter(motion_stats.jitter_ms)
+                        if smoother.enabled:
+                            for dx, dy, scroll, drag, seq, cts in frames:
+                                smoother.push(dx, dy, scroll)
+                        else:
+                            total_dx = sum(f[0] for f in frames)
+                            total_dy = sum(f[1] for f in frames)
+                            total_scroll = sum(f[2] for f in frames)
+                            ui.emit_rel_scroll(total_dx, total_dy, total_scroll)
 
                     # 0x03: Ping/Pong frame (5 bytes: !BI)
                     elif len(data) == 5 and data[0] == 3:
@@ -752,6 +986,20 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
                     elif msg_type == "type_text":
                         keyboard_queue.put_nowait((msg_type, data))
 
+                    elif msg_type == "motion_stats":
+                        try:
+                            await ws.send_json({"type": "motion_stats", "stats": motion_stats.snapshot()})
+                        except Exception:
+                            pass
+
+                    elif msg_type == "motion_mode":
+                        mode = str(data.get("mode", "direct")).lower()
+                        smoother.set_enabled(mode == "smooth")
+                        try:
+                            await ws.send_json({"type": "motion_mode", "mode": "smooth" if smoother.enabled else "direct"})
+                        except Exception:
+                            pass
+
                     elif msg_type == "command":
                         command_queue.put_nowait(data)
 
@@ -766,6 +1014,7 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
                     pass
 
     finally:
+        smoother.flush()
         for worker in background_workers:
             worker.cancel()
         await asyncio.gather(*background_workers, return_exceptions=True)
@@ -774,7 +1023,7 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
                 key_up(MOUSE_BTN[1])
             except Exception:
                 pass
-        logger.info("WebSocket client disconnected")
+        logger.info("WebSocket client disconnected (motion: %s)", motion_stats.snapshot())
 
     return ws
 

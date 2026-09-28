@@ -244,6 +244,8 @@ class TestWebSocketIntegration(AioHTTPTestCase):
         self.assertIn("pingPacket", text)
         self.assertIn("getCoalescedEvents", text)
         self.assertIn("pointerId", text)
+        self.assertIn("motionSmoothToggle", text)
+        self.assertIn("motionSmooth", text)
 
     async def test_ws_connection_and_messages(self):
         """Test WebSocket text and key combos are processed in order."""

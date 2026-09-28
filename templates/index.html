@@ -579,6 +579,16 @@
                 <input type="range" id="accelSlider" min="0.0" max="1.0" step="0.05" value="0.40" class="slider">
             </div>
 
+            <div class="setting-group">
+                <div class="setting-label">
+                    <span>Smooth motion</span>
+                    <input type="checkbox" id="motionSmoothToggle" checked>
+                </div>
+                <div class="setting-hint" style="margin-top:4px;">
+                    Jitter buffer + stall prediction for shaky Wi-Fi. Turn off for raw input.
+                </div>
+            </div>
+
             <div class="setting-hint">
                 Settings persist automatically in your phone's browser.
             </div>
@@ -741,6 +751,16 @@
                 statusEl.textContent = '·';
                 sendPing();
                 pingInterval = setInterval(sendPing, 1500);
+                try {
+                    const params = new URLSearchParams(window.location.search);
+                    const motionParam = params.get('motion');
+                    if (motionParam === 'smooth' || motionParam === 'direct') {
+                        config.motionSmooth = motionParam === 'smooth';
+                        saveSettings();
+                        updateSettingsUI();
+                    }
+                    sendMotionMode();
+                } catch (err) {}
             };
 
             ws.onclose = () => {
@@ -787,13 +807,26 @@
         connectWs();
 
         // ── Pre-allocated binary packet buffers ──────────────────────────────
-        const mousePacket = new ArrayBuffer(6);
+        // 0x04 sequenced mouse: B(seq u16, ts u32, dx i16, dy i16, flags u8)
+        const mousePacket = new ArrayBuffer(12);
         const mouseView = new DataView(mousePacket);
-        mouseView.setUint8(0, 0x01); // 0x01: mouse_delta
+        mouseView.setUint8(0, 0x04); // 0x04: sequenced mouse_delta
 
-        const scrollPacket = new ArrayBuffer(3);
+        // 0x05 sequenced scroll: B(seq u16, ts u32, amount i16)
+        const scrollPacket = new ArrayBuffer(9);
         const scrollView = new DataView(scrollPacket);
-        scrollView.setUint8(0, 0x02); // 0x02: mouse_scroll
+        scrollView.setUint8(0, 0x05); // 0x05: sequenced mouse_scroll
+
+        // Shared motion sequence counter (uint16, wraps).
+        let motionSeq = 0;
+        function nextMotionSeq() {
+            const seq = motionSeq;
+            motionSeq = (motionSeq + 1) % 65536;
+            return seq;
+        }
+        function motionTimestamp() {
+            return (performance.now() % 4294967296) >>> 0;
+        }
 
         // ── Trackpad state ────────────────────────────────────────────────────
         const tpState = {
@@ -834,6 +867,7 @@
             sensitivity: 1.8,
             acceleration: 0.4,
             preset: 'balanced',
+            motionSmooth: true,
         };
 
         function loadSettings() {
@@ -844,6 +878,7 @@
                     if (typeof parsed.sensitivity === 'number') config.sensitivity = parsed.sensitivity;
                     if (typeof parsed.acceleration === 'number') config.acceleration = parsed.acceleration;
                     if (parsed.preset) config.preset = parsed.preset;
+                    if (typeof parsed.motionSmooth === 'boolean') config.motionSmooth = parsed.motionSmooth;
                 }
             } catch (e) {}
             updateSettingsUI();
@@ -869,6 +904,15 @@
             document.querySelectorAll('.preset-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.preset === config.preset);
             });
+
+            const smoothToggle = document.getElementById('motionSmoothToggle');
+            if (smoothToggle) smoothToggle.checked = config.motionSmooth;
+        }
+
+        function sendMotionMode() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                sendMsg('motion_mode', { mode: config.motionSmooth ? 'smooth' : 'direct' });
+            }
         }
 
         function applyPreset(name) {
@@ -944,9 +988,11 @@
                 tpState.accDy -= sendDy;
                 tpState.lastSendTime = now;
 
-                mouseView.setInt16(1, sendDx, false); // Big-endian
-                mouseView.setInt16(3, sendDy, false); // Big-endian
-                mouseView.setUint8(5, tpState.dragging ? 1 : 0);
+                mouseView.setUint16(1, nextMotionSeq(), false); // Big-endian
+                mouseView.setUint32(3, motionTimestamp(), false); // Big-endian
+                mouseView.setInt16(7, sendDx, false); // Big-endian
+                mouseView.setInt16(9, sendDy, false); // Big-endian
+                mouseView.setUint8(11, tpState.dragging ? 1 : 0);
                 if (tpState.dragging) tpState.dragSent = true;
 
                 ws.send(mousePacket);
@@ -984,7 +1030,9 @@
             const sendScroll = Math.max(-32767, Math.min(32767, Math.trunc(scrState.acc)));
             if (sendScroll !== 0) {
                 scrState.acc -= sendScroll;
-                scrollView.setInt16(1, sendScroll, false); // Big-endian (positive=up, negative=down)
+                scrollView.setUint16(1, nextMotionSeq(), false); // Big-endian
+                scrollView.setUint32(3, motionTimestamp(), false); // Big-endian
+                scrollView.setInt16(7, sendScroll, false); // Big-endian (positive=up, negative=down)
                 ws.send(scrollPacket);
             }
 
@@ -1655,6 +1703,16 @@
                 config.preset = 'custom';
                 saveSettings();
                 updateSettingsUI();
+            });
+        }
+
+        const motionSmoothToggle = document.getElementById('motionSmoothToggle');
+        if (motionSmoothToggle) {
+            motionSmoothToggle.addEventListener('change', (e) => {
+                config.motionSmooth = e.target.checked;
+                saveSettings();
+                updateSettingsUI();
+                sendMotionMode();
             });
         }
 

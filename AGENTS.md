@@ -53,6 +53,15 @@ The WebSocket endpoint is served at `/ws`. The server socket sets `TCP_NODELAY =
   - Format: `!Bh`
   - Byte 0: `0x02` (Type ID)
   - Bytes 1–2: `int16` amount (positive = up, negative = down)
+- **Sequenced Mouse Delta (12 bytes)**:
+  - Format: `!BHIhhB`
+  - Byte 0: `0x04` (Type ID)
+  - Bytes 1–2: `uint16` sequence number (wraps at 65536, shared with scroll)
+  - Bytes 3–6: `uint32` client timestamp (ms modulo $2^{32}$)
+  - Bytes 7–8: `int16` $dx$, Bytes 9–10: `int16` $dy$, Byte 11: `uint8` flags (bit 0 = `drag`)
+- **Sequenced Scroll (9 bytes)**:
+  - Format: `!BHIh`
+  - Byte 0: `0x05` (Type ID), Bytes 1–2: `uint16` seq, Bytes 3–6: `uint32` client ts, Bytes 7–8: `int16` amount
 - **Ping / Pong (5 bytes)**:
   - Format: `!BI`
   - Byte 0: `0x03` (Type ID)
@@ -62,6 +71,8 @@ The WebSocket endpoint is served at `/ws`. The server socket sets `TCP_NODELAY =
 - **Type Text**: `{"type": "type_text", "text": "Hello World"}`
 - **Key Combo**: `{"type": "key_combo", "modifiers": ["ctrl", "alt"], "key": "t"}`
 - **Mouse Click**: `{"type": "mouse_click", "button": 1, "drag_end": false}` (buttons: 1=left, 2=middle, 3=right)
+- **Motion Stats**: `{"type": "motion_stats"}` → server replies with frame counts, seq gaps, jitter, stalls, teleports
+- **Motion Mode**: `{"type": "motion_mode", "mode": "smooth"|"direct"}` (default `smooth`; the client settings menu persists a toggle, `?motion=` overrides per page load)
 - **System Command**: `{"type": "command", "name": "volume_up", "params": {}}`
 
 ---
@@ -85,6 +96,7 @@ The WebSocket endpoint is served at `/ws`. The server socket sets `TCP_NODELAY =
 - **Send Pacing & Anti-Collision**: Enforces `MIN_SEND_INTERVAL = 8ms` (~120Hz cap) and synchronizes `tpState.lastSendTime` across input sampling and `requestAnimationFrame(flushDelta)` to prevent clashing packet bursts.
 - **True Adaptive Backpressure**: Checks `ws.bufferedAmount > 0` before transmitting. When 2.4 GHz Wi-Fi undergoes RF retries, delta motion is accumulated losslessly in `tpState.accDx`/`tpState.accDy` and transmitted as a single 6-byte packet once the link clears.
 - **Server Micro-Burst Coalescing**: Server drains queued binary delta/scroll frames from the reader buffer, summing $\sum dx, \sum dy, \sum \text{scroll}$ and injecting them via batched single-syscall `emit_rel_scroll()`.
+- **Motion Telemetry + Smoothing**: Sequenced frames feed per-connection stats (seq gaps, jitter EMA, stalls, teleports) queryable via `motion_stats`. Smooth mode is the default: adaptive jitter buffer (playout = 2×jitter, max 30 ms) with bounded dead reckoning (80 ms / 96 px caps, decayed velocity); `direct` is the zero-added-latency opt-out.
 - **Live Latency Indicator**: `#status.status-line` acts as a dynamic pill measuring RTT via 5-byte ping every 1.5s (`🟢 <25ms`, `🟡 25-60ms`, `🔴 >60ms`).
 
 ---
