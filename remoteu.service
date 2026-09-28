@@ -1,0 +1,15 @@
+[Unit]
+Description=remoteu - Phone remote trackpad & keyboard for Linux
+Documentation=https://github.com/bldnwine/remoteu
+After=network.target
+
+[Service]
+Type=simple
+Nice=-10
+WorkingDirectory=%h/Projects/remoteu
+ExecStart=/usr/bin/env uv run --project %h/Projects/remoteu remoteu
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

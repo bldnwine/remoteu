@@ -1,0 +1,1671 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#121212">
+    <title>Hypr-Remote</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #121212;
+            color: #e0e0e0;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            padding: 6px;
+            gap: 4px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 2px 4px;
+            flex-shrink: 0;
+        }
+
+        .status-line {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #666;
+            min-width: 36px;
+            height: 16px;
+            padding: 0 4px;
+            border-radius: 8px;
+            background: #252525;
+            border: 1px solid #3d3d3d;
+            margin-left: auto;
+            flex-shrink: 0;
+            transition: all 0.25s ease;
+            user-select: none;
+            letter-spacing: 0.5px;
+        }
+
+        .status-line.connected {
+            color: #4aff88;
+            border-color: #4aff8880;
+            box-shadow: 0 0 6px #4aff8830;
+        }
+
+        .status-line.connected.lat-good {
+            color: #4aff88;
+            border-color: #4aff8880;
+            box-shadow: 0 0 6px #4aff8830;
+        }
+
+        .status-line.connected.lat-fair {
+            color: #ffd166;
+            border-color: #ffd16680;
+            box-shadow: 0 0 6px #ffd16630;
+        }
+
+        .status-line.connected.lat-poor {
+            color: #ff5252;
+            border-color: #ff525280;
+            box-shadow: 0 0 6px #ff525230;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+
+        .header-btn {
+            background: transparent;
+            border: none;
+            padding: 6px 8px;
+            color: #c0c0d0;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 28px;
+            -webkit-touch-callout: none;
+            transition: all 0.1s;
+        }
+
+        .header-btn:active {
+            transform: scale(0.95);
+            background: #3d3d3d;
+        }
+
+        /* Controls Area */
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .section-title {
+            font-size: 0.6rem;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 2px 4px;
+        }
+
+        .kb-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Button Grid */
+        .btn-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+        }
+
+        .btn {
+            background: #292929;
+            border: 1px solid #3d3d3d;
+            border-radius: 8px;
+            padding: 12px 4px;
+            color: #c0c0d0;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            min-height: 56px;
+            -webkit-touch-callout: none;
+            transition: all 0.1s;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+            background: #3d3d3d;
+        }
+
+        .btn-modifier {
+            background: #1a2840;
+            border-color: #3d3d3d;
+        }
+
+        .btn-modifier.active {
+            background: #555;
+            border-color: #777;
+            color: #eee;
+        }
+
+        .btn-icon {
+            font-size: 1.2rem;
+        }
+
+        .btn-label {
+            font-size: 0.65rem;
+            opacity: 0.8;
+        }
+
+
+        #tabBtn .btn-icon {
+            transform: translateY(-1px);
+        }
+
+        /* Keyboard trigger */
+        .kb-trigger {
+            background: #292929;
+            border: 1px solid #3d3d3d;
+            border-radius: 8px;
+            padding: 14px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        .kb-trigger:active {
+            background: #3d3d3d;
+        }
+
+        .kb-trigger.active {
+            border-color: #777;
+            color: #777;
+        }
+
+        /* Trackpad container */
+        .trackpad-container {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .trackpad-wrapper {
+            flex: 1;
+            display: flex;
+            gap: 4px;
+        }
+
+        .trackpad {
+            flex: 1;
+            background: #292929;
+            border: 2px solid #3d3d3d;
+            border-radius: 12px;
+            position: relative;
+            touch-action: none;
+            user-select: none;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .trackpad.active {
+            background: #292929;
+            border-color: #777;
+        }
+
+        .trackpad-surface {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .trackpad-hint {
+            color: #555;
+            font-size: 0.85rem;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 4px;
+            padding: 4px;
+            justify-content: center;
+        }
+
+        .side-btn {
+            flex: 1;
+            height: 44px;
+            background: #292929;
+            border: 2px solid #3d3d3d;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #888;
+            user-select: none;
+        }
+
+        .side-btn:active {
+            background: #3d3d3d;
+            border-color: #777;
+            color: #777;
+        }
+
+        /* D-pad arrows inside trackpad */
+        .trackpad-dpad {
+            position: absolute;
+            bottom: 56px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            z-index: 1;
+        }
+
+        .dpad-row {
+            display: flex;
+            gap: 2px;
+        }
+
+        .dpad-btn {
+            width: 40px;
+            height: 40px;
+            background: #292929;
+            border: 1px solid #3d3d3d;
+            border-radius: 8px;
+            color: #888;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-touch-callout: none;
+            transition: all 0.1s;
+        }
+
+        .dpad-btn:active {
+            background: #3d3d3d;
+        }
+
+        .trackpad.active .dpad-btn,
+        .trackpad.dragging .dpad-btn {
+            opacity: 0.35;
+            pointer-events: none;
+        }
+
+        .trackpad.dragging {
+            border-color: #4aff88;
+            background: #1a3020;
+        }
+
+        .trackpad.dragging .trackpad-hint {
+            color: #4aff8860;
+        }
+
+        .header-right {
+            gap: 16px;
+        }
+
+        /* Scroll bar */
+        .scroll-bar {
+            width: 32px;
+            background: #292929;
+            border: 2px solid #3d3d3d;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 6px 0;
+            flex-shrink: 0;
+            gap: 4px;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .scroll-track {
+            flex: 1;
+            width: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            position: relative;
+            touch-action: none;
+        }
+
+
+        .scroll-btn {
+            width: 24px;
+            height: 24px;
+            background: #292929;
+            border: 1px solid #3d3d3d;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.7rem;
+            color: #666;
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .scroll-btn:active {
+            background: #3d3d3d;
+            border-color: #777;
+            color: #777;
+        }
+
+        /* Error toast */
+        .error-toast {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            background: #802020;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            z-index: 1000;
+            transition: transform 0.3s;
+        }
+
+        .error-toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Settings Modal */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 16px;
+        }
+
+        .modal-backdrop.open {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1c1c1e;
+            border: 1px solid #38383a;
+            border-radius: 14px;
+            width: 100%;
+            max-width: 320px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+            user-select: none;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 0.95rem;
+            color: #f0f0f0;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 2px 6px;
+            line-height: 1;
+        }
+
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .setting-title {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #777;
+            font-weight: 600;
+        }
+
+        .setting-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: #c0c0c0;
+        }
+
+        .setting-value {
+            color: #4aff88;
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        .preset-row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .preset-btn {
+            flex: 1;
+            padding: 6px 4px;
+            background: #2a2a2c;
+            border: 1px solid #3d3d40;
+            border-radius: 6px;
+            color: #aaa;
+            font-size: 0.72rem;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s;
+        }
+
+        .preset-btn.active {
+            background: #343438;
+            border-color: #4aff88;
+            color: #4aff88;
+            font-weight: 600;
+        }
+
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+            accent-color: #4aff88;
+            cursor: pointer;
+        }
+
+        .setting-hint {
+            font-size: 0.68rem;
+            color: #666;
+            text-align: center;
+            margin-top: 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="errorToast" class="error-toast"></div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-backdrop">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Trackpad Settings</h3>
+                <button class="modal-close" id="settingsCloseBtn">✕</button>
+            </div>
+            
+            <div class="setting-group">
+                <div class="setting-title">Presets</div>
+                <div class="preset-row">
+                    <button class="preset-btn" data-preset="precision">Precision</button>
+                    <button class="preset-btn active" data-preset="balanced">Balanced</button>
+                    <button class="preset-btn" data-preset="fast">Fast / 4K</button>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting-label">
+                    <span>Sensitivity</span>
+                    <span id="sensitivityVal" class="setting-value">1.8×</span>
+                </div>
+                <input type="range" id="sensitivitySlider" min="0.5" max="4.0" step="0.1" value="1.8" class="slider">
+            </div>
+
+            <div class="setting-group">
+                <div class="setting-label">
+                    <span>Acceleration</span>
+                    <span id="accelVal" class="setting-value">0.40</span>
+                </div>
+                <input type="range" id="accelSlider" min="0.0" max="1.0" step="0.05" value="0.40" class="slider">
+            </div>
+
+            <div class="setting-hint">
+                Settings persist automatically in your phone's browser.
+            </div>
+        </div>
+    </div>
+
+    <header class="header">
+        <div class="header-controls">
+            <button class="header-btn" id="fsBtn">⛶</button>
+            <button class="header-btn" data-cmd="volume_mute">🔇</button>
+            <button class="header-btn" id="newTabBtn">NT</button>
+            <button class="header-btn" data-cmd="media_play_pause">⏯</button>
+        </div>
+        <div class="header-controls header-right">
+            <button class="header-btn" id="settingsBtn" title="Trackpad Settings">⚙</button>
+            <button class="header-btn" id="closeBtn">✕</button>
+            <button class="header-btn" data-cmd="suspend"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg></button>
+        </div>
+    </header>
+
+    <!-- Hidden input for mobile keyboard capture.
+         No tabindex so the browser treats it as a normal focusable element. -->
+    <input type="text" id="kbInput"
+        style="position: absolute; left: -9999px; top: -9999px; opacity: 0; pointer-events: none; width: 0; height: 0; border: none; margin: 0; padding: 0;"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-hidden="true">
+
+    <div class="controls">
+        <div class="btn-grid">
+            <button class="btn" id="escBtn">
+                <span class="btn-icon">⎋</span>
+                <span class="btn-label">ESC</span>
+            </button>
+            <button class="btn" id="tabBtn">
+                <span class="btn-icon">⇥</span>
+                <span class="btn-label">TAB</span>
+            </button>
+            <button class="btn" data-cmd="volume_down">
+                <span class="btn-icon">🔉</span>
+                <span class="btn-label">Vol-</span>
+            </button>
+            <button class="btn" data-cmd="volume_up">
+                <span class="btn-icon">🔊</span>
+                <span class="btn-label">Vol+</span>
+            </button>
+        </div>
+
+        <!-- Modifiers -->
+        <div class="section-title">Modifiers (tap to toggle)</div>
+        <div class="btn-grid">
+            <button class="btn btn-modifier" data-mod="ctrl">
+                <span class="btn-icon">⌃</span>
+                <span class="btn-label">Ctrl</span>
+            </button>
+            <button class="btn btn-modifier" data-mod="alt">
+                <span class="btn-icon">⌥</span>
+                <span class="btn-label">Alt</span>
+            </button>
+            <button class="btn btn-modifier" data-mod="super">
+                <span class="btn-icon">⌘</span>
+                <span class="btn-label">Win</span>
+            </button>
+            <button class="btn btn-modifier" data-mod="shift">
+                <span class="btn-icon">⇧</span>
+                <span class="btn-label">Shift</span>
+            </button>
+        </div>
+
+        <!-- Keyboard -->
+        <div class="section-title kb-section">Type (modifiers apply)<div id="status" class="status-line"></div></div>
+        <div class="kb-trigger" id="kbTrigger">
+            Tap to type with phone keyboard
+        </div>
+    </div>
+
+    <!-- Trackpad with buttons and scroll bar -->
+    <div class="trackpad-container">
+        <div class="trackpad-wrapper">
+            <div id="trackpad" class="trackpad">
+                <div class="trackpad-surface">
+                    <div class="trackpad-hint">Touch to move<br>Tap to click</div>
+                </div>
+                <div class="trackpad-dpad">
+                    <button class="dpad-btn" id="arrowUp">↑</button>
+                    <div class="dpad-row">
+                        <button class="dpad-btn" id="arrowLeft">←</button>
+                        <button class="dpad-btn" id="arrowDown">↓</button>
+                        <button class="dpad-btn" id="arrowRight">→</button>
+                    </div>
+                </div>
+                <div class="button-row">
+                    <button class="side-btn" id="mouse4" title="Back">◀</button>
+                    <button class="side-btn" id="mouseMiddle" title="Middle click">M</button>
+                    <button class="side-btn" id="rightClick" title="Right click">RC</button>
+                    <button class="side-btn" id="mouse5" title="Forward">▶</button>
+                </div>
+            </div>
+            <div class="scroll-bar">
+                <button class="scroll-btn" id="scrollUp" title="Scroll up">▲</button>
+                <div class="scroll-track" id="scrollTrack">
+                </div>
+                <button class="scroll-btn" id="scrollDown" title="Scroll down">▼</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const errorToast = document.getElementById('errorToast');
+        const trackpad = document.getElementById('trackpad');
+        const kbInput = document.getElementById('kbInput');
+        const kbTrigger = document.getElementById('kbTrigger');
+        const rightClick = document.getElementById('rightClick');
+
+        // ── Native WebSocket setup ──────────────────────────────────────────
+        let ws = null;
+        let reconnectTimer = null;
+        let pingInterval = null;
+
+        const pingPacket = new ArrayBuffer(5);
+        const pingView = new DataView(pingPacket);
+        pingView.setUint8(0, 0x03); // 0x03: ping_pong
+
+        function updateLatencyIndicator(rtt) {
+            if (!statusEl) return;
+            statusEl.textContent = `${Math.round(rtt)}ms`;
+            statusEl.classList.remove('lat-good', 'lat-fair', 'lat-poor');
+            if (rtt < 25) {
+                statusEl.classList.add('lat-good');
+            } else if (rtt < 60) {
+                statusEl.classList.add('lat-fair');
+            } else {
+                statusEl.classList.add('lat-poor');
+            }
+        }
+
+        function sendPing() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const nowMs = (performance.now() % 4294967296) >>> 0;
+                pingView.setUint32(1, nowMs, false);
+                ws.send(pingPacket);
+            }
+        }
+
+        function connectWs() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+            if (pingInterval) {
+                clearInterval(pingInterval);
+                pingInterval = null;
+            }
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            ws = new WebSocket(wsUrl);
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = () => {
+                statusEl.classList.add('connected');
+                statusEl.textContent = '·';
+                sendPing();
+                pingInterval = setInterval(sendPing, 1500);
+            };
+
+            ws.onclose = () => {
+                statusEl.className = 'status-line';
+                statusEl.textContent = '--';
+                if (pingInterval) {
+                    clearInterval(pingInterval);
+                    pingInterval = null;
+                }
+                reconnectTimer = setTimeout(connectWs, 1500);
+            };
+
+            ws.onerror = () => {
+                statusEl.className = 'status-line';
+                statusEl.textContent = '--';
+            };
+
+            ws.onmessage = (event) => {
+                if (event.data instanceof ArrayBuffer) {
+                    const view = new DataView(event.data);
+                    if (view.byteLength === 5 && view.getUint8(0) === 0x03) {
+                        const sentTime = view.getUint32(1, false);
+                        const nowMs = (performance.now() % 4294967296) >>> 0;
+                        const rtt = Math.max(0, (nowMs - sentTime + 4294967296) % 4294967296);
+                        updateLatencyIndicator(rtt);
+                    }
+                    return;
+                }
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'error') {
+                        showError(data.message);
+                    }
+                } catch (err) {}
+            };
+        }
+
+        function sendMsg(type, payload = {}) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type, ...payload }));
+            }
+        }
+
+        connectWs();
+
+        // ── Pre-allocated binary packet buffers ──────────────────────────────
+        const mousePacket = new ArrayBuffer(6);
+        const mouseView = new DataView(mousePacket);
+        mouseView.setUint8(0, 0x01); // 0x01: mouse_delta
+
+        const scrollPacket = new ArrayBuffer(3);
+        const scrollView = new DataView(scrollPacket);
+        scrollView.setUint8(0, 0x02); // 0x02: mouse_scroll
+
+        // ── Trackpad state ────────────────────────────────────────────────────
+        const tpState = {
+            lastX: null,
+            lastY: null,
+            touching: false,
+            startTime: 0,
+            moved: false,
+            totalDist: 0,
+            accDx: 0,
+            accDy: 0,
+            batchId: null,
+            lastTime: 0,
+            lastTimeStamp: 0,
+            lastSendTime: 0,
+            touchEndTime: 0,
+            vSmooth: 0,
+            dragging: false,        // 2-finger drag active
+            dragSent: false,        // whether backend knows about drag
+        };
+
+        // ── Active modifier set ───────────────────────────────────────────────
+        const activeMods = new Set();
+        const modifierBtns = document.querySelectorAll('.btn-modifier');
+
+        // ── Ballistics & Settings Configuration ──────────────────────────────
+        const V_THRESHOLD = 0.25;  // px/ms: boundary between precision zone and acceleration zone
+        const MAX_GAIN = 5.0;      // max dynamic acceleration multiplier
+        const THRESHOLD = 0.2;     // min px delta to register movement
+
+        const PRESETS = {
+            precision: { sensitivity: 1.2, acceleration: 0.2 },
+            balanced:  { sensitivity: 1.8, acceleration: 0.4 },
+            fast:      { sensitivity: 2.5, acceleration: 0.7 },
+        };
+
+        const config = {
+            sensitivity: 1.8,
+            acceleration: 0.4,
+            preset: 'balanced',
+        };
+
+        function loadSettings() {
+            try {
+                const saved = localStorage.getItem('remoteu_settings');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (typeof parsed.sensitivity === 'number') config.sensitivity = parsed.sensitivity;
+                    if (typeof parsed.acceleration === 'number') config.acceleration = parsed.acceleration;
+                    if (parsed.preset) config.preset = parsed.preset;
+                }
+            } catch (e) {}
+            updateSettingsUI();
+        }
+
+        function saveSettings() {
+            try {
+                localStorage.setItem('remoteu_settings', JSON.stringify(config));
+            } catch (e) {}
+        }
+
+        function updateSettingsUI() {
+            const sensSlider = document.getElementById('sensitivitySlider');
+            const sensVal = document.getElementById('sensitivityVal');
+            const accelSlider = document.getElementById('accelSlider');
+            const accelVal = document.getElementById('accelVal');
+
+            if (sensSlider) sensSlider.value = config.sensitivity;
+            if (sensVal) sensVal.textContent = config.sensitivity.toFixed(1) + '×';
+            if (accelSlider) accelSlider.value = config.acceleration;
+            if (accelVal) accelVal.textContent = config.acceleration.toFixed(2);
+
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.preset === config.preset);
+            });
+        }
+
+        function applyPreset(name) {
+            if (PRESETS[name]) {
+                config.sensitivity = PRESETS[name].sensitivity;
+                config.acceleration = PRESETS[name].acceleration;
+                config.preset = name;
+                saveSettings();
+                updateSettingsUI();
+            }
+        }
+
+        loadSettings();
+
+        // ── Libinput-style Ballistics Engine ─────────────────────────────────
+        function calculateBallistics(rawDx, rawDy, dt) {
+            const rawDist = Math.hypot(rawDx, rawDy);
+            const vInstant = rawDist / dt; // px/ms
+
+            // Time-decayed EMA filter (tau ~ 25ms) to smooth capacitive digitizer jitter
+            const alpha = 1.0 - Math.exp(-dt / 25.0);
+            tpState.vSmooth += alpha * (vInstant - tpState.vSmooth);
+
+            let gain = 1.0;
+            if (tpState.vSmooth > V_THRESHOLD && config.acceleration > 0) {
+                const excess = (tpState.vSmooth - V_THRESHOLD) / V_THRESHOLD;
+                gain = 1.0 + config.acceleration * Math.pow(excess, 1.3);
+                if (gain > MAX_GAIN) gain = MAX_GAIN;
+            }
+
+            const scale = config.sensitivity * gain;
+            return {
+                dx: rawDx * scale,
+                dy: rawDy * scale,
+            };
+        }
+
+        // ── Scroll coalescer state ────────────────────────────────────────────
+        const scrState = {
+            acc: 0,
+            batchId: null,
+        };
+
+        function showError(msg) {
+            errorToast.textContent = msg;
+            errorToast.classList.add('show');
+            setTimeout(() => errorToast.classList.remove('show'), 3000);
+        }
+
+        // ── Trackpad Packet Transmission & Flush ─────────────────────────────
+        const MIN_SEND_INTERVAL = 8.0; // ms (~120Hz send rate cap)
+
+        function transmitMouseDelta(force = false) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+            
+            // True backpressure: do not queue frames if previous frame is still in flight in socket buffer
+            if (ws.bufferedAmount > 0) {
+                scheduleFlush();
+                return false;
+            }
+
+            const now = performance.now();
+            if (!force && (now - tpState.lastSendTime < MIN_SEND_INTERVAL)) {
+                scheduleFlush();
+                return false;
+            }
+
+            const sendDx = Math.max(-32767, Math.min(32767, Math.trunc(tpState.accDx)));
+            const sendDy = Math.max(-32767, Math.min(32767, Math.trunc(tpState.accDy)));
+
+            if (sendDx !== 0 || sendDy !== 0) {
+                tpState.accDx -= sendDx;
+                tpState.accDy -= sendDy;
+                tpState.lastSendTime = now;
+
+                mouseView.setInt16(1, sendDx, false); // Big-endian
+                mouseView.setInt16(3, sendDy, false); // Big-endian
+                mouseView.setUint8(5, tpState.dragging ? 1 : 0);
+                if (tpState.dragging) tpState.dragSent = true;
+
+                ws.send(mousePacket);
+                return true;
+            }
+            return false;
+        }
+
+        function flushDelta() {
+            transmitMouseDelta();
+            if (Math.trunc(tpState.accDx) !== 0 || Math.trunc(tpState.accDy) !== 0) {
+                tpState.batchId = requestAnimationFrame(flushDelta);
+            } else {
+                tpState.batchId = null;
+            }
+        }
+
+        function scheduleFlush() {
+            if (!tpState.batchId) {
+                tpState.batchId = requestAnimationFrame(flushDelta);
+            }
+        }
+
+        function flushScroll() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                scrState.batchId = null;
+                return;
+            }
+
+            if (ws.bufferedAmount > 0) {
+                scrState.batchId = requestAnimationFrame(flushScroll);
+                return;
+            }
+
+            const sendScroll = Math.max(-32767, Math.min(32767, Math.trunc(scrState.acc)));
+            if (sendScroll !== 0) {
+                scrState.acc -= sendScroll;
+                scrollView.setInt16(1, sendScroll, false); // Big-endian (positive=up, negative=down)
+                ws.send(scrollPacket);
+            }
+
+            if (Math.trunc(scrState.acc) !== 0) {
+                scrState.batchId = requestAnimationFrame(flushScroll);
+            } else {
+                scrState.batchId = null;
+            }
+        }
+
+        function scheduleScrollFlush() {
+            if (!scrState.batchId)
+                scrState.batchId = requestAnimationFrame(flushScroll);
+        }
+
+        const trackpadPointers = new Set();
+        const trackpadTouches = new Set();
+        let primaryPointerId = null;
+        let primaryTouchId = null;
+
+        function startTrackpadGesture(clientX, clientY, eventTime) {
+            if (document.activeElement === kbInput) kbInput.blur();
+            tpState.dragging = false;
+            tpState.dragSent = false;
+            tpState.touching = true;
+            tpState.moved = false;
+            tpState.totalDist = 0;
+            tpState.startTime = Date.now();
+            trackpad.classList.add('active');
+            trackpad.classList.remove('dragging');
+            tpState.lastX = clientX;
+            tpState.lastY = clientY;
+            const now = performance.now();
+            tpState.lastTime = now;
+            tpState.lastTimeStamp = (eventTime && eventTime > 0) ? eventTime : now;
+            tpState.lastSendTime = now;
+            tpState.vSmooth = 0;
+            if (tpState.batchId) {
+                cancelAnimationFrame(tpState.batchId);
+                tpState.batchId = null;
+            }
+            tpState.accDx = 0;
+            tpState.accDy = 0;
+        }
+
+        function setTrackpadDragging(dragging) {
+            tpState.dragging = dragging;
+            trackpad.classList.toggle('dragging', dragging);
+        }
+
+        function processTrackpadSample(clientX, clientY, eventTime) {
+            if (!tpState.touching || tpState.lastX === null || tpState.lastY === null) return;
+
+            const now = performance.now();
+            const sampleTime = (eventTime && eventTime > 0) ? eventTime : now;
+            let rawDt = tpState.lastTimeStamp ? (sampleTime - tpState.lastTimeStamp) : 16.6;
+            if (rawDt <= 0 || rawDt > 200) rawDt = 16.6;
+            tpState.lastTimeStamp = sampleTime;
+            tpState.lastTime = now;
+
+            const dt = Math.max(5.0, Math.min(50.0, rawDt));
+            const rawDx = clientX - tpState.lastX;
+            const rawDy = clientY - tpState.lastY;
+            tpState.totalDist += Math.hypot(rawDx, rawDy);
+
+            const delta = calculateBallistics(rawDx, rawDy, dt);
+            if (Math.abs(delta.dx) >= THRESHOLD || Math.abs(delta.dy) >= THRESHOLD) {
+                tpState.accDx += delta.dx;
+                tpState.accDy += delta.dy;
+                tpState.moved = true;
+
+                if (transmitMouseDelta()) {
+                    if (tpState.batchId) {
+                        cancelAnimationFrame(tpState.batchId);
+                        tpState.batchId = null;
+                    }
+                } else if (Math.trunc(tpState.accDx) !== 0 || Math.trunc(tpState.accDy) !== 0) {
+                    scheduleFlush();
+                }
+            }
+
+            tpState.lastX = clientX;
+            tpState.lastY = clientY;
+        }
+
+        function finishTrackpadGesture(cancelled = false) {
+            if (!tpState.touching) return;
+
+            if (tpState.batchId) {
+                cancelAnimationFrame(tpState.batchId);
+                tpState.batchId = null;
+            }
+            transmitMouseDelta(true);
+            const wasDrag = tpState.dragging;
+            const isTap = !cancelled && !wasDrag &&
+                (Date.now() - tpState.startTime) < 220 &&
+                (!tpState.moved || tpState.totalDist < 8);
+
+            tpState.touching = false;
+            tpState.touchEndTime = Date.now();
+            tpState.lastX = null;
+            tpState.lastY = null;
+            tpState.vSmooth = 0;
+            setTrackpadDragging(false);
+            trackpad.classList.remove('active');
+
+            if (wasDrag && tpState.dragSent) {
+                sendMsg('mouse_click', { button: 1, drag_end: true });
+                tpState.dragSent = false;
+            } else if (isTap) {
+                sendMsg('mouse_click', { button: 1 });
+                if (document.activeElement === kbInput) kbInput.blur();
+            }
+        }
+
+        // Pointer Events expose coalesced hardware samples where supported.
+        // Keep the touch path as a fallback for browsers without Pointer Events.
+        if ('PointerEvent' in window) {
+            trackpad.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                if (primaryPointerId === null) {
+                    primaryPointerId = e.pointerId;
+                    trackpadPointers.clear();
+                    trackpadPointers.add(e.pointerId);
+                    startTrackpadGesture(e.clientX, e.clientY, e.timeStamp);
+                    try { trackpad.setPointerCapture(e.pointerId); } catch (_) {}
+                } else {
+                    trackpadPointers.add(e.pointerId);
+                    setTrackpadDragging(trackpadPointers.size >= 2);
+                    try { trackpad.setPointerCapture(e.pointerId); } catch (_) {}
+                }
+            }, { passive: false });
+
+            trackpad.addEventListener('pointermove', (e) => {
+                e.preventDefault();
+                if (!tpState.touching || e.pointerId !== primaryPointerId) return;
+
+                const samples = (typeof e.getCoalescedEvents === 'function')
+                    ? e.getCoalescedEvents()
+                    : [];
+                if (samples.length > 0) {
+                    for (const sample of samples) {
+                        processTrackpadSample(sample.clientX, sample.clientY, sample.timeStamp);
+                    }
+                } else {
+                    processTrackpadSample(e.clientX, e.clientY, e.timeStamp);
+                }
+            }, { passive: false });
+
+            const finishPointer = (e) => {
+                e.preventDefault();
+                if (!trackpadPointers.has(e.pointerId)) return;
+                trackpadPointers.delete(e.pointerId);
+                try { trackpad.releasePointerCapture(e.pointerId); } catch (_) {}
+                finishTrackpadGesture(e.type === 'pointercancel');
+                trackpadPointers.clear();
+                primaryPointerId = null;
+            };
+            trackpad.addEventListener('pointerup', finishPointer, { passive: false });
+            trackpad.addEventListener('pointercancel', finishPointer, { passive: false });
+        } else {
+            trackpad.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                for (const touch of e.changedTouches) {
+                    if (primaryTouchId === null) {
+                        primaryTouchId = touch.identifier;
+                        startTrackpadGesture(touch.clientX, touch.clientY, e.timeStamp);
+                    }
+                    trackpadTouches.add(touch.identifier);
+                }
+                setTrackpadDragging(trackpadTouches.size >= 2);
+            }, { passive: false });
+
+            trackpad.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (!tpState.touching) return;
+                const touch = Array.from(e.touches).find((t) => t.identifier === primaryTouchId) || e.touches[0];
+                if (touch) processTrackpadSample(touch.clientX, touch.clientY, e.timeStamp);
+            }, { passive: false });
+
+            const finishTouch = (e) => {
+                e.preventDefault();
+                for (const touch of e.changedTouches) trackpadTouches.delete(touch.identifier);
+                finishTrackpadGesture(e.type === 'touchcancel');
+                trackpadTouches.clear();
+                primaryTouchId = null;
+            };
+            trackpad.addEventListener('touchend', finishTouch, { passive: false });
+            trackpad.addEventListener('touchcancel', finishTouch, { passive: false });
+        }
+
+        // ── System / volume buttons ───────────────────────────────────────────
+        document.querySelectorAll('[data-cmd]').forEach(btn => {
+            function emitCmd(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                sendMsg('command', { name: btn.dataset.cmd, params: {} });
+            }
+            btn.addEventListener('touchstart', emitCmd, { passive: false });
+            btn.addEventListener('click', (e) => {
+                if (e.detail !== 0) emitCmd(e);
+            });
+        });
+
+        // ── ESC, TAB, FS buttons ────────────────────────────────────────────
+        function bindKeyComboBtn(id, modifiers, key) {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            function emit(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                sendMsg('key_combo', { modifiers, key });
+            }
+            btn.addEventListener('touchstart', emit, { passive: false });
+            btn.addEventListener('click', (e) => {
+                if (e.detail !== 0) emit(e);
+            });
+        }
+        bindKeyComboBtn('escBtn', [], 'escape');
+        bindKeyComboBtn('tabBtn', [], 'tab');
+        bindKeyComboBtn('fsBtn', [], 'f11');
+        bindKeyComboBtn('closeBtn', ['super'], 'c');
+        bindKeyComboBtn('newTabBtn', ['ctrl'], 't');
+
+        // ── Arrow keys (inside trackpad) ───────────────────────────────────
+        function setupArrowBtn(id, key) {
+            const btn = document.getElementById(id);
+            function emitArrow(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                sendMsg('key_combo', { modifiers: [], key: key });
+            }
+            btn.addEventListener('touchstart', emitArrow, { passive: false });
+            btn.addEventListener('click', (e) => {
+                if (e.detail !== 0) emitArrow(e);
+            });
+            btn.addEventListener('touchend', (e) => e.stopPropagation(), { passive: false });
+            btn.addEventListener('touchcancel', (e) => e.stopPropagation(), { passive: false });
+        }
+        setupArrowBtn('arrowLeft', 'left');
+        setupArrowBtn('arrowUp', 'up');
+        setupArrowBtn('arrowDown', 'down');
+        setupArrowBtn('arrowRight', 'right');
+
+        // ── Modifier toggles ──────────────────────────────────────────────────
+        document.querySelectorAll('.btn-modifier').forEach(btn => {
+            function toggleMod(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const wasFocused = (document.activeElement === kbInput);
+                const mod = btn.dataset.mod;
+                if (activeMods.has(mod)) {
+                    activeMods.delete(mod);
+                    btn.classList.remove('active');
+                } else {
+                    activeMods.add(mod);
+                    btn.classList.add('active');
+                }
+                updateKbTrigger();
+                if (wasFocused && document.activeElement !== kbInput) {
+                    kbInput.focus();
+                }
+            }
+
+            btn.addEventListener('touchstart', toggleMod, { passive: false });
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                toggleMod(e);
+            });
+            btn.addEventListener('click', (e) => {
+                if (e.detail !== 0) {
+                    toggleMod(e);
+                }
+            });
+        });
+
+        function updateKbTrigger() {
+            if (activeMods.size > 0) {
+                const mods = Array.from(activeMods).join('+');
+                kbTrigger.textContent = `[${mods}] + key — tap here to type`;
+                kbTrigger.classList.add('active');
+            } else {
+                kbTrigger.textContent = 'Tap to type with phone keyboard';
+                kbTrigger.classList.remove('active');
+            }
+        }
+
+        // ── Right click, mouse4, mouse5 ───────────────────────────────────────────
+        function emitMouseClick(button, e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            sendMsg('mouse_click', { button: button });
+        }
+
+        rightClick.addEventListener('click', (e) => emitMouseClick(3, e));
+        rightClick.addEventListener('touchstart', (e) => emitMouseClick(3, e), { passive: false });
+        rightClick.addEventListener('touchend', (e) => e.stopPropagation(), { passive: false });
+        rightClick.addEventListener('touchcancel', (e) => e.stopPropagation(), { passive: false });
+
+        const mouse4Btn = document.getElementById('mouse4');
+        mouse4Btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sendMsg('key_combo', { modifiers: ['alt'], key: 'left' });
+        });
+        mouse4Btn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); 
+            sendMsg('key_combo', { modifiers: ['alt'], key: 'left' }); }, { passive: false });
+        mouse4Btn.addEventListener('touchend', (e) => e.stopPropagation(), { passive: false });
+        mouse4Btn.addEventListener('touchcancel', (e) => e.stopPropagation(), { passive: false });
+
+        const mouse5Btn = document.getElementById('mouse5');
+        mouse5Btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sendMsg('key_combo', { modifiers: ['alt'], key: 'right' });
+        });
+        mouse5Btn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation();
+            sendMsg('key_combo', { modifiers: ['alt'], key: 'right' }); }, { passive: false });
+        mouse5Btn.addEventListener('touchend', (e) => e.stopPropagation(), { passive: false });
+        mouse5Btn.addEventListener('touchcancel', (e) => e.stopPropagation(), { passive: false });
+
+        const mouseMiddleBtn = document.getElementById('mouseMiddle');
+        mouseMiddleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sendMsg('mouse_click', { button: 2 });
+        });
+        mouseMiddleBtn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation();
+            sendMsg('mouse_click', { button: 2 }); }, { passive: false });
+        mouseMiddleBtn.addEventListener('touchend', (e) => e.stopPropagation(), { passive: false });
+        mouseMiddleBtn.addEventListener('touchcancel', (e) => e.stopPropagation(), { passive: false });
+
+        // ── Scroll bar ──────────────────────────────────────────────────────────
+        const scrollUp = document.getElementById('scrollUp');
+        const scrollDown = document.getElementById('scrollDown');
+        const scrollTrack = document.getElementById('scrollTrack');
+        const SCROLL_AMOUNT = 3;
+        let scrollInterval = null;
+        let isDragging = false;
+        let dragDirection = null;
+        
+        function startScroll(direction) {
+            stopScroll();
+            scrollInterval = setInterval(() => {
+                scrState.acc += direction === 'up' ? SCROLL_AMOUNT : -SCROLL_AMOUNT;
+                scheduleScrollFlush();
+            }, 50);
+            scrState.acc += direction === 'up' ? SCROLL_AMOUNT : -SCROLL_AMOUNT;
+            scheduleScrollFlush();
+        }
+        
+        function stopScroll() {
+            if (scrollInterval) {
+                clearInterval(scrollInterval);
+                scrollInterval = null;
+            }
+            if (scrState.batchId) {
+                cancelAnimationFrame(scrState.batchId);
+                flushScroll();
+            }
+            isDragging = false;
+        }
+        
+        scrollUp.addEventListener('mousedown', () => startScroll('up'));
+        scrollUp.addEventListener('mouseup', stopScroll);
+        scrollUp.addEventListener('mouseleave', stopScroll);
+        scrollUp.addEventListener('touchstart', (e) => { e.preventDefault(); startScroll('up'); }, { passive: false });
+        scrollUp.addEventListener('touchend', stopScroll);
+        
+        scrollDown.addEventListener('mousedown', () => startScroll('down'));
+        scrollDown.addEventListener('mouseup', stopScroll);
+        scrollDown.addEventListener('mouseleave', stopScroll);
+        scrollDown.addEventListener('touchstart', (e) => { e.preventDefault(); startScroll('down'); }, { passive: false });
+        scrollDown.addEventListener('touchend', stopScroll);
+
+        // Track drag (swipe up/down on the track)
+        let trackTouchStart = null;
+
+        scrollTrack.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            trackTouchStart = touch.clientY;
+        }, { passive: false });
+
+        scrollTrack.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (trackTouchStart === null) return;
+            const touch = e.touches[0];
+            const delta = trackTouchStart - touch.clientY;
+
+            if (Math.abs(delta) > 10) {
+                scrState.acc += delta > 0 ? SCROLL_AMOUNT : -SCROLL_AMOUNT;
+                scheduleScrollFlush();
+                trackTouchStart = touch.clientY;
+            }
+        }, { passive: false });
+
+        scrollTrack.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            trackTouchStart = null;
+        }, { passive: false });
+
+        // Mouse drag on track
+        scrollTrack.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isDragging = true;
+            dragDirection = e.offsetY < 0 ? 'up' : 'down';
+            startScroll(dragDirection);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const rect = scrollTrack.getBoundingClientRect();
+            const relativeY = e.clientY - rect.top;
+            const direction = relativeY < rect.height / 2 ? 'up' : 'down';
+            if (direction !== dragDirection) {
+                dragDirection = direction;
+                startScroll(direction);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                stopScroll();
+                isDragging = false;
+            }
+        });
+
+        // ── Keyboard trigger & focus management ───────────────────────────────
+        kbTrigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            kbInput.value = '';
+            kbInput.focus();
+        });
+
+        kbInput.addEventListener('focus', () => {
+            kbInput.value = '';
+            updateKbTrigger();
+        });
+
+        kbInput.addEventListener('blur', () => {
+            updateKbTrigger();
+        });
+
+        // Detect native mobile keyboard dismissal to instantly clean up zombie input focus
+        if (window.visualViewport) {
+            let lastVpHeight = window.visualViewport.height;
+            window.visualViewport.addEventListener('resize', () => {
+                const currentHeight = window.visualViewport.height;
+                // If viewport expanded by more than 100px, virtual keyboard closed natively
+                if (currentHeight - lastVpHeight > 100) {
+                    if (document.activeElement === kbInput) {
+                        kbInput.blur();
+                    }
+                }
+                lastVpHeight = currentHeight;
+            });
+        }
+
+        // ── Key name maps ─────────────────────────────────────────────────────
+
+        // Keys that are themselves modifiers — never send as the main key
+        const MODIFIER_KEYS = new Set([
+            'Control', 'Shift', 'Alt', 'Meta', 'AltGraph',
+            'CapsLock', 'NumLock', 'ScrollLock', 'Hyper', 'Super', 'OS', 'Win'
+        ]);
+
+        // e.key → backend key name for non-printable keys
+        const SPECIAL_KEY_MAP = {
+            'Enter': 'return',
+            'Backspace': 'backspace',
+            'Escape': 'escape',
+            'Tab': 'tab',
+            ' ': 'space',
+            'Delete': 'delete',
+            'ArrowUp': 'up',
+            'ArrowDown': 'down',
+            'ArrowLeft': 'left',
+            'ArrowRight': 'right',
+            'Home': 'home',
+            'End': 'end',
+            'PageUp': 'pageup',
+            'PageDown': 'pagedown',
+            'Insert': 'insert',
+            'F1': 'f1', 'F2': 'f2', 'F3': 'f3', 'F4': 'f4',
+            'F5': 'f5', 'F6': 'f6', 'F7': 'f7', 'F8': 'f8',
+            'F9': 'f9', 'F10': 'f10', 'F11': 'f11', 'F12': 'f12',
+        };
+
+        // ── Key sending ───────────────────────────────────────────────────────
+        function clearMods() {
+            activeMods.clear();
+            modifierBtns.forEach(b => b.classList.remove('active'));
+            updateKbTrigger();
+        }
+
+        function sendKey(keyToSend, isSpecialKey) {
+            if (isSpecialKey || activeMods.size > 0) {
+                // dotool's `key` command takes XKB key names, not bare characters.
+                // Remap any bare character that has a different XKB name so that
+                // e.g. Super+Space sends `key space` rather than `key  ` (invalid).
+                const CHAR_TO_KEYNAME = {
+                    ' ': 'space',
+                    '\t': 'tab',
+                    '\n': 'return',
+                    '\r': 'return',
+                };
+                const key = CHAR_TO_KEYNAME[keyToSend] ?? keyToSend;
+                sendMsg('key_combo', {
+                    modifiers: Array.from(activeMods),
+                    key,
+                });
+                clearMods();
+            } else {
+                sendMsg('type_text', { text: keyToSend });
+            }
+        }
+
+        function sendInsertedText(text) {
+            if (!text) return;
+            if (activeMods.size === 0) {
+                sendMsg('type_text', { text });
+            } else {
+                for (const char of text) sendKey(char, false);
+            }
+        }
+
+        // ── Keyboard event handlers ───────────────────────────────────────────
+        // keydown: reliable for special keys and desktop browsers.
+        // On mobile, e.key is often 'Unidentified' for regular characters —
+        // those fall through to the input event handler below.
+        let keydownHandled = false;
+
+        kbInput.addEventListener('keydown', (e) => {
+            keydownHandled = false;
+
+            // Skip modifier keys themselves
+            if (MODIFIER_KEYS.has(e.key)) return;
+
+            // Normalise: some Android keyboards fire e.key='Unidentified' even for
+            // Enter/Backspace — fall back to keyCode to recover the real key name.
+            let resolvedKey = e.key;
+            if (e.key === 'Unidentified') {
+                if (e.keyCode === 13)  resolvedKey = 'Enter';
+                else if (e.keyCode === 8)  resolvedKey = 'Backspace';
+                else if (e.keyCode === 46) resolvedKey = 'Delete';
+                else if (e.keyCode === 27) resolvedKey = 'Escape';
+                else if (e.keyCode === 9)  resolvedKey = 'Tab';
+            }
+
+            // Known special key
+            if (Object.prototype.hasOwnProperty.call(SPECIAL_KEY_MAP, resolvedKey)) {
+                e.preventDefault();
+                keydownHandled = true;
+                sendKey(SPECIAL_KEY_MAP[resolvedKey], true);
+                kbInput.value = '';
+                return;
+            }
+
+            // Single printable character with a known identity (desktop / some mobile)
+            if (resolvedKey && resolvedKey !== 'Unidentified' && resolvedKey.length === 1) {
+                e.preventDefault();
+                keydownHandled = true;
+                sendKey(resolvedKey, false);
+                kbInput.value = '';
+                return;
+            }
+
+            // Unknown / Unidentified — let the input event handle it
+        });
+
+        // input: primary handler for mobile keyboards.
+        // Mobile keyboards often skip reliable keydown events and only fire input.
+        kbInput.addEventListener('input', (e) => {
+            if (keydownHandled) { keydownHandled = false; return; }
+            keydownHandled = false;
+
+            switch (e.inputType) {
+                case 'insertText':
+                    // Regular character(s) — most common mobile path
+                    if (e.data) {
+                        sendInsertedText(e.data);
+                        kbInput.value = '';
+                    }
+                    break;
+
+                case 'insertLineBreak':
+                case 'insertParagraph':
+                    // Enter key on mobile keyboard (varies by browser/OS)
+                    sendKey('return', true);
+                    kbInput.value = '';
+                    break;
+
+                case 'deleteContentBackward':
+                    // Backspace
+                    sendKey('backspace', true);
+                    kbInput.value = '';
+                    break;
+
+                case 'deleteContentForward':
+                    // Delete (forward)
+                    sendKey('delete', true);
+                    kbInput.value = '';
+                    break;
+
+                case 'insertCompositionText':
+                case 'insertFromComposition':
+                    // IME / CJK / emoji picker finished
+                    if (kbInput.value) {
+                        sendInsertedText(kbInput.value);
+                        kbInput.value = '';
+                    }
+                    break;
+            }
+        });
+
+        // ── Settings modal event listeners ────────────────────────────────────
+        const settingsModal = document.getElementById('settingsModal');
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+
+        if (settingsBtn && settingsModal) {
+            settingsBtn.addEventListener('click', () => {
+                if (document.activeElement === kbInput) kbInput.blur();
+                settingsModal.classList.add('open');
+            });
+        }
+
+        if (settingsCloseBtn && settingsModal) {
+            settingsCloseBtn.addEventListener('click', () => {
+                settingsModal.classList.remove('open');
+            });
+        }
+
+        if (settingsModal) {
+            settingsModal.addEventListener('click', (e) => {
+                if (e.target === settingsModal) {
+                    settingsModal.classList.remove('open');
+                }
+            });
+        }
+
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                applyPreset(btn.dataset.preset);
+            });
+        });
+
+        const sensitivitySlider = document.getElementById('sensitivitySlider');
+        if (sensitivitySlider) {
+            sensitivitySlider.addEventListener('input', (e) => {
+                config.sensitivity = parseFloat(e.target.value);
+                config.preset = 'custom';
+                saveSettings();
+                updateSettingsUI();
+            });
+        }
+
+        const accelSlider = document.getElementById('accelSlider');
+        if (accelSlider) {
+            accelSlider.addEventListener('input', (e) => {
+                config.acceleration = parseFloat(e.target.value);
+                config.preset = 'custom';
+                saveSettings();
+                updateSettingsUI();
+            });
+        }
+
+        // ── Prevent pinch-zoom ────────────────────────────────────────────────
+        // Zoom is already blocked by viewport meta (user-scalable=no) and
+        // touch-action:manipulation in CSS. This catches any remaining edge cases.
+        document.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) e.preventDefault();
+        }, { passive: false });
+
+    </script>
+</body>
+
+</html>

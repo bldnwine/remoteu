@@ -1,0 +1,35 @@
+======================================================================
+remoteu — Quick Setup & Installation Guide
+======================================================================
+
+Assuming uv and Python 3.12+ are installed:
+
+1. Automatic Setup (Recommended):
+   cd ~/Projects/remoteu
+   ./setup.sh
+
+   (Optionally pass --autostart or --no-autostart)
+
+2. Manual Setup:
+   cd ~/Projects/remoteu
+   uv sync
+
+   # Configure secure udev rule (uses systemd-logind seat ACL, no 'input' group needed):
+   echo 'KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/70-uinput.rules
+   sudo modprobe uinput
+   sudo udevadm control --reload-rules && sudo udevadm trigger /dev/uinput
+
+   # Run server:
+   uv run remoteu
+
+3. Hyprland Autostart Options:
+   Option A — systemd user unit:
+     mkdir -p ~/.config/systemd/user
+     cp remoteu.service ~/.config/systemd/user/
+     systemctl --user daemon-reload && systemctl --user enable --now remoteu.service
+
+   Option B — Hyprland lua config (~/.config/hypr/hyprland.lua):
+     hl.exec_cmd(launch("uv run --project " .. os.getenv("HOME") .. "/Projects/remoteu remoteu"))
+
+   Option C — standard hyprland.conf:
+     exec-once = uv run --project ~/Projects/remoteu remoteu
